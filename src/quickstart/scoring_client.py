@@ -18,17 +18,16 @@ load_dotenv()
 
 
 async def run(scoring_url: str):
-    secret_key = os.environ.get("SOMA_SECRET_KEY")
-    if secret_key:
-        kp = Keypair.from_secret_key(secret_key)
-    else:
-        print(f"No SOMA_SECRET_KEY")
-        return
+    # secret_key = os.environ.get("SOMA_SECRET_KEY")
+    # if secret_key:
+    #     kp = Keypair.from_secret_key(secret_key)
+    # else:
+    #     print(f"No SOMA_SECRET_KEY")
+    #     return
 
-    sender = kp.address()
-    print(f"Sender: {sender}")
+    # sender = kp.address()
+    # print(f"Sender: {sender}")
     client = await SomaClient(chain="testnet")
-
 
     # Find an open target
     targets = await client.get_targets(status="open")
@@ -38,7 +37,9 @@ async def run(scoring_url: str):
     manifests = await client.get_model_manifests(target)
     print(f"Fetched {len(manifests)} model manifest(s)")
 
-    data_url = "https://github.com/soma-org/soma/releases/download/testnet-v0.1.6/SHA256SUMS"
+    data_url = (
+        "https://github.com/soma-org/soma/releases/download/testnet-v0.1.6/SHA256SUMS"
+    )
 
     async with aiohttp.ClientSession() as session:
         async with session.get(data_url) as response:
@@ -51,7 +52,12 @@ async def run(scoring_url: str):
     payload = {
         "data_url": data_url,
         "models": [
-            {"url": m.url, "checksum": m.checksum, "size": m.size, "decryption_key": m.decryption_key}
+            {
+                "url": m.url,
+                "checksum": m.checksum,
+                "size": m.size,
+                "decryption_key": m.decryption_key,
+            }
             for m in manifests
         ],
         "target_embedding": target.embedding,
@@ -71,6 +77,7 @@ async def run(scoring_url: str):
 
     print(f"Winner: index={winner}  distance={distance:.6f}")
     print(f"Threshold: {target.distance_threshold}")
+    print(f"Loss score: {loss_score}")
 
     # if distance > target.distance_threshold:
     #     print("\nDistance exceeds threshold — no hit, skipping submission.")
@@ -95,8 +102,12 @@ async def run(scoring_url: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Score data and submit to hit a target.")
-    parser.add_argument("scoring_url", help="URL of the scoring endpoint (from `modal serve`)")
+    parser = argparse.ArgumentParser(
+        description="Score data and submit to hit a target."
+    )
+    parser.add_argument(
+        "scoring_url", help="URL of the scoring endpoint (from `modal serve`)"
+    )
     args = parser.parse_args()
     asyncio.run(run(args.scoring_url))
 

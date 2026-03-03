@@ -39,12 +39,32 @@ uv run score <scoring-url>
 
 The client fetches open targets and model manifests from the Soma testnet, then sends them to your Modal server for scoring.
 
+## Training
+
+Train a Soma V1 model on [FineWeb](https://huggingface.co/datasets/HuggingFaceFW/fineweb) using Modal with an A100 GPU. Two backends are available:
+
+### PyTorch
+
+```bash
+uv run modal run src/quickstart/train_torch.py
+```
+
+### Flax/JAX
+
+```bash
+uv run modal run src/quickstart/train_flax.py
+```
+
+Both scripts stream data from HuggingFace, checkpoint every 500 steps to a Modal volume (`soma-training-data`), and save a final model at completion. Pass `--num-steps` to control training length (default: 10,000).
+
 ## Project Structure
 
 ```
 src/quickstart/
 ├── scoring_server.py   # Modal app — GPU scoring server
-└── scoring_client.py   # CLI client — sends requests to the server
+├── scoring_client.py   # CLI client — sends requests to the server
+├── train_torch.py      # Modal app — PyTorch training
+└── train_flax.py       # Modal app — Flax/JAX training
 ```
 
 ## Deploying
