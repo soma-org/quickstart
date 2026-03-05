@@ -25,9 +25,13 @@ dev = [
     "datasets>=4.6.1",
     "jax[cpu]>=0.9.1",
     "optax>=0.2.7",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
     "soma-models[all,flax]>=0.1.7",
 ]
 
 [project.scripts]
 settle-targets = "quickstart.settle_targets:main"
 create-secrets = "quickstart.create_modal_secret:main"
+stake-model = "quickstart.stake:main"
+soma-status = "quickstart.status:main"

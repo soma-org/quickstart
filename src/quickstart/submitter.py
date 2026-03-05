@@ -1,13 +1,14 @@
-"""Unified Soma scorer — runs scoring and submission on Modal with a GPU.
+"""Soma data submitter — finds and submits data against open targets on Modal.
 
-Streams shuffled source files from The Stack v2, scores against open targets,
-and uploads to S3 + submits on-chain only when the distance threshold is met.
+Streams shuffled source files from The Stack v2, scores them against open
+targets using a GPU, and uploads to S3 + submits on-chain when the distance
+threshold is met.
 
 Deploys as a cron job that runs every 24 hours, with a 23h45m timeout.
-The scoring loop runs continuously within each invocation.
+The submission loop runs continuously within each invocation.
 
 Deploy with:
-    uv run modal deploy src/quickstart/scorer.py
+    uv run modal deploy src/quickstart/submitter.py
 
 Required Modal secrets (soma-secrets):
     SOMA_SECRET_KEY, HF_TOKEN, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
@@ -23,7 +24,7 @@ import threading
 
 import modal
 
-app = modal.App("soma-scoring")
+app = modal.App("soma-submitter")
 
 volume = modal.Volume.from_name("soma-scoring-data", create_if_missing=True)
 
@@ -127,7 +128,7 @@ def upload_to_s3(data: bytes, checksum: str, epoch: int) -> str:
     volumes={"/data": volume},
     secrets=[modal.Secret.from_name("soma-secrets")],
 )
-class Scorer:
+class Submitter:
     @modal.enter()
     def start_soma(self):
         self.proc = subprocess.Popen(
@@ -248,4 +249,4 @@ class Scorer:
 
 @app.local_entrypoint()
 def main():
-    Scorer().run.remote()
+    Submitter().run.remote()

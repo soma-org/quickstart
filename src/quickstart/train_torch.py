@@ -12,12 +12,17 @@ app = modal.App("soma-training-torch")
 
 volume = modal.Volume.from_name("soma-training-data", create_if_missing=True)
 
-image = modal.Image.debian_slim(python_version="3.13").pip_install(
-    "soma-models[torch]>=0.1.7",
-    "datasets>=3.0",
-    "torch>=2.0",
-    "boto3",
-    "smart_open",
+image = (
+    modal.Image.debian_slim(python_version="3.13")
+    .pip_install(
+        "soma-models[torch]>=0.1.7",
+        "datasets>=3.0",
+        "torch>=2.0",
+        "boto3",
+        "smart_open",
+    )
+    .env({"PYTHONPATH": "/root/src"})
+    .add_local_dir("src", remote_path="/root/src")
 )
 
 MODEL_DIR = "/training"
@@ -26,7 +31,7 @@ LOG_EVERY = 10
 LEARNING_RATE = 1e-4
 DROPOUT_RATE = 0.1
 MICRO_BATCH_SIZE = 2
-GRAD_ACCUM_STEPS = 8  # effective batch size = 2 * 8 = 16
+GRAD_ACCUM_STEPS = 64  # effective batch size = 2 * 64 = 128
 SHUFFLE_BUFFER = 100_000
 
 
@@ -145,11 +150,36 @@ def train(num_steps: int = 10_000):
         if step > 0 and step % CHECKPOINT_EVERY == 0:
             path = f"{MODEL_DIR}/checkpoint-{step}.safetensors"
             model.save(path)
+
+            # Save artifacts for game loop commit (embedding + weights bytes)
+            model.eval()
+            with torch.no_grad():
+                _ckpt_loss, ckpt_embed = compute_loss(model, sig_reg, token_ids, targets)
+            if ckpt_embed.ndim == 2:
+                ckpt_embed = ckpt_embed.mean(dim=0)
+            from quickstart.common import save_training_artifacts
+            save_training_artifacts(
+                MODEL_DIR, step, ckpt_embed.cpu().tolist(), model.save_bytes()
+            )
+            model.train()
+
             volume.commit()
             print(f"  → saved {path}")
 
-    final_path = f"{MODEL_DIR}/model-final.safetensors"
+    final_step = num_steps
+    final_path = f"{MODEL_DIR}/checkpoint-{final_step}.safetensors"
     model.save(final_path)
+
+    model.eval()
+    with torch.no_grad():
+        _final_loss, final_embed = compute_loss(model, sig_reg, token_ids, targets)
+    if final_embed.ndim == 2:
+        final_embed = final_embed.mean(dim=0)
+    from quickstart.common import save_training_artifacts
+    save_training_artifacts(
+        MODEL_DIR, final_step, final_embed.cpu().tolist(), model.save_bytes()
+    )
+
     volume.commit()
     print(f"Training complete — saved {final_path}")
 
