@@ -1,6 +1,6 @@
 # Soma Scoring Quickstart
 
-Run GPU-accelerated scoring on [Modal](https://modal.com) and submit results from your local machine.
+Run GPU-accelerated scoring, training, and reward settlement on [Modal](https://modal.com).
 
 ## Prerequisites
 
@@ -17,60 +17,75 @@ uv sync
 uv run modal setup
 ```
 
-## Usage
+### Secrets
 
-### 1. Start the scoring server
+All Modal apps use a single secret called `soma-secrets`, populated from your `.env` file. Copy `.env.example` to `.env` and fill in the values:
 
-This launches the scoring service on Modal with an L4 GPU:
+- **`SOMA_SECRET_KEY`** — Base58-encoded Ed25519 secret key.
+- **`HF_TOKEN`** — HuggingFace access token. Create one at <https://huggingface.co/settings/tokens>.
+- **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** — AWS credentials with read access to the `softwareheritage` S3 bucket.
+- **`S3_BUCKET`** — S3-compatible bucket for uploading scored data (e.g. Cloudflare R2).
+- **`S3_ACCESS_KEY_ID`** / **`S3_SECRET_ACCESS_KEY`** — credentials for the upload bucket.
+- **`S3_ENDPOINT_URL`** *(optional)* — endpoint for non-AWS providers (e.g. `https://<account>.r2.cloudflarestorage.com`).
+- **`S3_PUBLIC_URL`** *(optional)* — public base URL for the bucket (e.g. `https://pub-xxx.r2.dev`).
 
-```bash
-uv run modal serve src/quickstart/scoring_server.py
-```
-
-Modal will print a URL for the scoring endpoint — copy it for the next step.
-
-### 2. Send a scoring request
-
-In a separate terminal, run the client with the endpoint URL from step 1:
+Then push the secrets to Modal:
 
 ```bash
-uv run score <scoring-url>
+uv run create-secrets
 ```
 
-The client fetches open targets and model manifests from the Soma testnet, then sends them to your Modal server for scoring.
+## Scoring
+
+The scorer streams shuffled source files from The Stack v2, scores them against open targets on a GPU, and automatically uploads + submits on-chain when the distance threshold is met.
+
+Run interactively (stays attached to your terminal):
+
+```bash
+uv run modal run src/quickstart/scorer.py
+```
+
+Deploy as a persistent service:
+
+```bash
+uv run modal deploy src/quickstart/scorer.py
+```
 
 ## Training
 
-Train a Soma V1 model on [FineWeb](https://huggingface.co/datasets/HuggingFaceFW/fineweb) using Modal with an A100 GPU. Two backends are available:
+Train a Soma V1 model on [The Stack v2](https://huggingface.co/datasets/bigcode/the-stack-v2-dedup) using an H100 GPU. Two backends are available:
 
 ### PyTorch
 
 ```bash
-uv run modal run src/quickstart/train_torch.py
+uv run modal run --detach src/quickstart/train_torch.py
 ```
 
 ### Flax/JAX
 
 ```bash
-uv run modal run src/quickstart/train_flax.py
+uv run modal run --detach src/quickstart/train_flax.py
 ```
 
-Both scripts stream data from HuggingFace, checkpoint every 500 steps to a Modal volume (`soma-training-data`), and save a final model at completion. Pass `--num-steps` to control training length (default: 10,000).
+Both scripts stream data from The Stack v2, checkpoint every 500 steps to a Modal volume (`soma-training-data`), and save a final model at completion. Pass `--num-steps` to control training length (default: 10,000).
+
+## Settling Rewards
+
+Claim rewards from all settled targets:
+
+```bash
+uv run settle-targets
+```
+
+This requires `SOMA_SECRET_KEY` in your `.env` file.
 
 ## Project Structure
 
 ```
 src/quickstart/
-├── scoring_server.py   # Modal app — GPU scoring server
-├── scoring_client.py   # CLI client — sends requests to the server
-├── train_torch.py      # Modal app — PyTorch training
-└── train_flax.py       # Modal app — Flax/JAX training
-```
-
-## Deploying
-
-To keep the server running without a local `modal serve` process:
-
-```bash
-uv run modal deploy src/quickstart/scoring_server.py
+├── scorer.py              # Modal app — GPU scoring + S3 upload + on-chain submission
+├── train_torch.py         # Modal app — PyTorch training
+├── train_flax.py          # Modal app — Flax/JAX training
+├── create_modal_secret.py # CLI — push .env secrets to Modal
+└── settle_targets.py      # CLI — claim rewards from settled targets
 ```

@@ -1,4 +1,4 @@
-"""Soma V1 training (PyTorch) on FineWeb — runs on Modal with a GPU.
+"""Soma V1 training (PyTorch) on The Stack v2 — runs on Modal with a GPU.
 
 Run with:
     uv run modal run --detach src/quickstart/train_torch.py
@@ -16,6 +16,8 @@ image = modal.Image.debian_slim(python_version="3.13").pip_install(
     "soma-models[torch]>=0.1.7",
     "datasets>=3.0",
     "torch>=2.0",
+    "boto3",
+    "smart_open",
 )
 
 MODEL_DIR = "/training"
@@ -25,27 +27,50 @@ LEARNING_RATE = 1e-4
 DROPOUT_RATE = 0.1
 MICRO_BATCH_SIZE = 2
 GRAD_ACCUM_STEPS = 8  # effective batch size = 2 * 8 = 16
+SHUFFLE_BUFFER = 100_000
 
 
 def make_batches(batch_size: int):
-    """Stream tokenized batches from FineWeb."""
+    """Stream shuffled, tokenized batches from The Stack v2."""
+    import os
+
+    import boto3
     from datasets import load_dataset
+    from smart_open import open as smart_open
 
     from soma_models.v1.configs import V1_MAX_SEQ_LEN
     from soma_models.v1.tokenizer import tokenize
 
-    ds = load_dataset(
-        "HuggingFaceFW/fineweb", "sample-10BT", split="train", streaming=True
+    session = boto3.Session(
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
     )
+    s3 = session.client("s3")
+
+    ds = load_dataset(
+        "bigcode/the-stack-v2-dedup",
+        split="train",
+        streaming=True,
+        token=os.environ.get("HF_TOKEN"),
+    )
+    ds = ds.shuffle(buffer_size=SHUFFLE_BUFFER)
+
+    def download_contents(row):
+        s3_url = f"s3://softwareheritage/content/{row['blob_id']}"
+        with smart_open(
+            s3_url, "rb", compression=".gz", transport_params={"client": s3}
+        ) as fin:
+            content = fin.read().decode(row["src_encoding"])
+        return {"content": content}
+
+    ds = ds.map(download_contents)
 
     buffer_ids, buffer_targets = [], []
 
-    for example in ds:
-        text = example.get("text", "")
-        if not text.strip():
-            continue
-
-        sequences = tokenize(data=text.encode("utf-8"), max_seq_len=V1_MAX_SEQ_LEN)
+    for row in ds:
+        sequences = tokenize(
+            data=row["content"].encode("utf-8"), max_seq_len=V1_MAX_SEQ_LEN
+        )
 
         for seq in sequences:
             buffer_ids.append(seq.token_ids)
@@ -56,7 +81,13 @@ def make_batches(batch_size: int):
                 buffer_ids, buffer_targets = [], []
 
 
-@app.function(image=image, gpu="A100", timeout=86400, volumes={MODEL_DIR: volume})
+@app.function(
+    image=image,
+    gpu="H100",
+    timeout=86400,
+    volumes={MODEL_DIR: volume},
+    secrets=[modal.Secret.from_name("soma-secrets")],
+)
 def train(num_steps: int = 10_000):
     import torch
 
@@ -79,7 +110,7 @@ def train(num_steps: int = 10_000):
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     print("Model initialized.")
 
-    print("Loading dataset (streaming from HuggingFace)...")
+    print("Loading dataset (streaming from The Stack v2)...")
     batches = make_batches(MICRO_BATCH_SIZE)
     first_ids, first_tgts = next(batches)
     print("First batch ready — starting training.\n")
