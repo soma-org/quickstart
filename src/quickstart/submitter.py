@@ -11,7 +11,7 @@ Deploy with:
     uv run modal deploy src/quickstart/submitter.py
 
 Required Modal secrets (soma-secrets):
-    SOMA_SECRET_KEY, HF_TOKEN, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+    SOMA_SECRET_KEY, HF_TOKEN,
     S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_ENDPOINT_URL, S3_PUBLIC_URL
 """
 
@@ -47,14 +47,12 @@ LOCAL_DATA_DIR = "/tmp/soma-local-data"
 def stream_stack_v2():
     """Yield shuffled source files from The Stack v2 as UTF-8 bytes."""
     import boto3
+    from botocore import UNSIGNED
+    from botocore.config import Config
     from datasets import load_dataset
     from smart_open import open as smart_open
 
-    session = boto3.Session(
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-    )
-    s3 = session.client("s3")
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 
     ds = load_dataset(
         "bigcode/the-stack-v2-dedup",

@@ -41,17 +41,15 @@ def make_batches(batch_size: int):
     import os
 
     import boto3
+    from botocore import UNSIGNED
+    from botocore.config import Config
     from datasets import load_dataset
     from smart_open import open as smart_open
 
     from soma_models.v1.configs import V1_MAX_SEQ_LEN
     from soma_models.v1.tokenizer import tokenize
 
-    session = boto3.Session(
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-    )
-    s3 = session.client("s3")
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 
     ds = load_dataset(
         "bigcode/the-stack-v2-dedup",

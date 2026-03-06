@@ -20,12 +20,24 @@ uv run modal setup
 Copy `.env.example` to `.env` and fill in the values:
 
 - **`SOMA_SECRET_KEY`** — Base58-encoded Ed25519 secret key.
-- **`HF_TOKEN`** — HuggingFace access token. Create one at <https://huggingface.co/settings/tokens>.
-- **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** — AWS credentials with read access to the `softwareheritage` S3 bucket.
-- **`S3_BUCKET`** — S3-compatible bucket for uploading model weights and submission data (e.g. Cloudflare R2).
-- **`S3_ACCESS_KEY_ID`** / **`S3_SECRET_ACCESS_KEY`** — credentials for the upload bucket.
-- **`S3_ENDPOINT_URL`** *(optional)* — endpoint for non-AWS providers (e.g. `https://<account>.r2.cloudflarestorage.com`).
-- **`S3_PUBLIC_URL`** *(optional)* — public base URL for the bucket (e.g. `https://pub-xxx.r2.dev`).
+- **`HF_TOKEN`** — HuggingFace access token. Create one at <https://huggingface.co/settings/tokens>, then approve access to the [gated dataset](https://huggingface.co/datasets/bigcode/the-stack-v2-dedup).
+
+#### Upload bucket (Cloudflare R2 recommended)
+
+You need an S3-compatible bucket for uploading model weights and submission data. **Cloudflare R2** is the simplest option (no IAM, free egress):
+
+1. Create a [Cloudflare account](https://dash.cloudflare.com/sign-up) and go to Storage & databases → **R2 object storage** → Overview.
+    - Activate R2 Subscription on your account ($0/mo with 10 GB/month free)
+2. Create a bucket (e.g. `soma-data`).
+3. Enable public access: select your bucket → **Settings** → **Public Development URL** → enable the `r2.dev` subdomain. Copy the public URL (your S3_PUBLIC_URL).
+4. Go back to R2 object storage Overiview. Under Account Details, copy the S3 API (your S3_ENDPOINT_URL). Then next to API Tokens, click **Manage**. Create a token with **Object Read & Write** permissions for your bucket. Copy the Access Key ID (your S3_ACCESS_KEY_ID) and Secret Access Key (your S3_SECRET_ACCESS_KEY).
+5. Fill in your `.env`:
+   - **`S3_BUCKET`** — your bucket name
+   - **`S3_ACCESS_KEY_ID`** / **`S3_SECRET_ACCESS_KEY`** — from the API token
+   - **`S3_ENDPOINT_URL`** — `https://<account-id>.r2.cloudflarestorage.com`
+   - **`S3_PUBLIC_URL`** — your bucket's public URL (e.g. `https://pub-xxx.r2.dev`)
+
+AWS S3 and GCS (via HMAC keys) are also supported — set `S3_ENDPOINT_URL` accordingly or leave it blank for AWS.
 
 Then push them to Modal:
 

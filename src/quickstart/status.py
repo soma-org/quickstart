@@ -80,7 +80,6 @@ async def show_status(model_id: str | None):
     target_st = state.target_state
     emission = state.emission_pool
     print(f"\n--- Network ---")
-    print(f"Emission/epoch:   {SomaClient.to_soma(emission.emission_per_epoch):.2f} SOMA")
     print(f"Reward/target:    {SomaClient.to_soma(target_st.reward_per_target):.4f} SOMA")
     print(f"Targets this epoch: {target_st.targets_generated_this_epoch}")
     print(f"Hits this epoch:  {target_st.hits_this_epoch}")
