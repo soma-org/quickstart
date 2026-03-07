@@ -77,7 +77,7 @@ This trains a small model, commits it on-chain, advances the epoch, and reveals 
 
 Graduate to testnet. The goal is to deploy two automations that run continuously: one trains your model each epoch, the other submits data to earn rewards.
 
-**Kick off the first training round** — this trains on an H100, commits on-chain, and writes your `model_id` locally:
+**Kick off the first training round** — this trains on an H100 and commits on-chain:
 
 ```bash
 uv run modal run src/quickstart/training.py --steps-per-round 500
@@ -105,15 +105,6 @@ After targets settle, claim your rewards:
 uv run claim
 ```
 
-## Monitoring
-
-Check your model status, open targets, claimable rewards, and network stats:
-
-```bash
-uv run soma-status
-uv run soma-status --model-id 0x...
-```
-
 ## Reference: Standalone Training Scripts
 
 For studying the training loop without the commit/reveal machinery:
@@ -135,7 +126,6 @@ src/quickstart/
 ├── submitter.py           # Modal app — data submission (score + upload + submit)
 ├── train_torch.py         # Standalone PyTorch training reference
 ├── train_flax.py          # Standalone Flax/JAX training reference
-├── status.py              # CLI — model and network status dashboard
 ├── settle_targets.py      # CLI — claim rewards from settled targets
 ├── localnet.py            # Localnet helpers for dev/test
 └── create_modal_secret.py # CLI — push .env secrets to Modal

@@ -33,4 +33,3 @@ dev = [
 [project.scripts]
 claim = "quickstart.settle_targets:main"
 create-secrets = "quickstart.create_modal_secret:main"
-soma-status = "quickstart.status:main"

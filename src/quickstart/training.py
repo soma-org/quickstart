@@ -18,7 +18,6 @@ Supports both PyTorch and Flax/JAX via --framework torch|flax (default: torch).
 See train_torch.py and train_flax.py for standalone training-only reference scripts.
 """
 
-import json
 import os
 import time
 
@@ -91,7 +90,6 @@ MICRO_BATCH_SIZE = 2
 GRAD_ACCUM_STEPS = 64
 LOG_EVERY = 10
 SHUFFLE_BUFFER = 100_000
-TRAINING_STATE_FILE = "training_state.json"
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +378,7 @@ async def do_commit(localnet: bool = True, model_dir: str = MODEL_DIR, vol: moda
     """
     from soma_sdk import Keypair, SomaClient
     from quickstart.common import (
+        DEFAULT_STATE,
         find_latest_checkpoint,
         load_training_state,
         load_training_artifacts,
@@ -389,12 +388,15 @@ async def do_commit(localnet: bool = True, model_dir: str = MODEL_DIR, vol: moda
 
     _vol = vol or volume
     await _vol.reload.aio()
-    state = load_training_state(model_dir)
 
-    if state["pending_reveal"]:
-        print(f"Skipping commit — model {state['model_id']} has a pending reveal.")
-        print(f"  Reveal it first (epoch must advance past {state['commit_epoch']}).")
-        return state
+    if localnet:
+        state = dict(DEFAULT_STATE)
+    else:
+        state = load_training_state(model_dir)
+        if state["pending_reveal"]:
+            print(f"Skipping commit — model {state['model_id']} has a pending reveal.")
+            print(f"  Reveal it first (epoch must advance past {state['commit_epoch']}).")
+            return state
 
     # Find latest checkpoint and its artifacts
     _ckpt_path, ckpt_step = find_latest_checkpoint(model_dir, CHECKPOINT_PREFIX)
@@ -462,8 +464,10 @@ async def do_commit(localnet: bool = True, model_dir: str = MODEL_DIR, vol: moda
 
     state["pending_reveal"] = True
     state["commit_epoch"] = current_epoch
-    save_training_state(state, model_dir)
-    await _vol.commit.aio()
+
+    if not localnet:
+        save_training_state(state, model_dir)
+        await _vol.commit.aio()
 
     print(f"\nCommit complete at epoch {current_epoch}")
     print(f"  Model: {state['model_id']}")
@@ -478,16 +482,20 @@ async def do_commit(localnet: bool = True, model_dir: str = MODEL_DIR, vol: moda
 # ---------------------------------------------------------------------------
 
 
-async def do_reveal(localnet: bool = True, model_dir: str = MODEL_DIR, vol: modal.Volume | None = None) -> dict | None:
-    """Check epoch and reveal if ready. Returns updated state if revealed, None otherwise."""
+async def do_reveal(localnet: bool = True, model_dir: str = MODEL_DIR, vol: modal.Volume | None = None, state: dict | None = None) -> dict | None:
+    """Check epoch and reveal if ready. Returns updated state if revealed, None otherwise.
+
+    If *state* is provided (localnet), uses it directly instead of loading from disk.
+    """
     from quickstart.common import (
         load_training_state,
         save_training_state,
     )
 
-    _vol = vol or volume
-    await _vol.reload.aio()
-    state = load_training_state(model_dir)
+    if state is None:
+        _vol = vol or volume
+        await _vol.reload.aio()
+        state = load_training_state(model_dir)
 
     if not state["pending_reveal"]:
         print("No pending reveal — nothing to do.")
@@ -527,23 +535,14 @@ async def do_reveal(localnet: bool = True, model_dir: str = MODEL_DIR, vol: moda
         return None
 
     state["pending_reveal"] = False
-    save_training_state(state, model_dir)
-    await _vol.commit.aio()
+
+    if not localnet:
+        save_training_state(state, model_dir)
+        await _vol.commit.aio()
 
     print(f"Model {state['model_id']} revealed at epoch {current_epoch}!")
     return state
 
-
-# ---------------------------------------------------------------------------
-# Local helper — write game state to local disk so CLI tools can read it
-# ---------------------------------------------------------------------------
-
-
-def write_local_state(state: dict):
-    """Write training state to local training_state.json for status CLI tools."""
-    with open(TRAINING_STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
-    print(f"Local {TRAINING_STATE_FILE} updated (model_id={state.get('model_id')})")
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +671,7 @@ class LocalnetTrainer:
         new_epoch = await client.advance_epoch()
         print(f"\nAdvanced epoch to {new_epoch}")
 
-        state = await do_reveal(localnet=True, model_dir=LOCALNET_MODEL_DIR, vol=localnet_volume)
+        state = await do_reveal(localnet=True, model_dir=LOCALNET_MODEL_DIR, vol=localnet_volume, state=state)
         return state
 
     @modal.exit()
@@ -696,8 +695,7 @@ def localnet(steps_per_round: int = 10, framework: str = "torch"):
 @app.local_entrypoint()
 def main(steps_per_round: int = 500, framework: str = "torch"):
     """Train + commit on testnet. Deploy this app for automated reveal + re-training."""
-    state = train_and_commit.remote(
+    train_and_commit.remote(
         steps=steps_per_round, localnet=False, framework=framework,
     )
-    write_local_state(state)
     print("Committed. Deploy with `uv run modal deploy src/quickstart/training.py` for automated reveal.")
