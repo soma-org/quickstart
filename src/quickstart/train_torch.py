@@ -1,6 +1,9 @@
-"""Soma V1 training (PyTorch) on The Stack v2 — runs on Modal with a GPU.
+"""Soma V1 training (PyTorch) on The Stack v2 — standalone reference script.
 
-Run with:
+This is a training-only script (no commit/reveal). Use training.py for the
+full automated flow with --framework torch.
+
+Run standalone:
     uv run modal run --detach src/quickstart/train_torch.py
 """
 

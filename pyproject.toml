@@ -31,7 +31,6 @@ dev = [
 ]
 
 [project.scripts]
-settle-targets = "quickstart.settle_targets:main"
+claim = "quickstart.settle_targets:main"
 create-secrets = "quickstart.create_modal_secret:main"
-stake-model = "quickstart.stake:main"
 soma-status = "quickstart.status:main"

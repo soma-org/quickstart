@@ -8,7 +8,6 @@ import glob as globmod
 import json
 import os
 import re
-import time
 
 
 # ---------------------------------------------------------------------------
@@ -19,11 +18,11 @@ DEFAULT_STATE = {
     "model_id": None,
     "step": 0,
     "pending_reveal": False,
-    "is_update": False,  # True after first model — controls reveal_model vs reveal_model_update
     "commit_epoch": None,
     "decryption_key": None,
     "weights_url": None,
     "embedding": None,
+    "framework": "torch",
 }
 
 
@@ -133,120 +132,3 @@ def upload_to_s3(data: bytes, key_name: str, epoch: int) -> str:
     return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
 
 
-def mock_upload_to_s3(
-    data: bytes, key_name: str, epoch: int, upload_dir: str
-) -> str:
-    """Save encrypted weights to disk, return a fake public URL."""
-    dest = os.path.join(upload_dir, "mock_s3", "models", str(epoch))
-    os.makedirs(dest, exist_ok=True)
-    filename = f"{key_name}.safetensors.enc"
-    with open(os.path.join(dest, filename), "wb") as f:
-        f.write(data)
-    url = f"https://mock-s3.example.com/models/{epoch}/{filename}"
-    print(f"  [MOCK S3] Saved {len(data)} bytes -> {url}")
-    return url
-
-
-# ---------------------------------------------------------------------------
-# Mock chain client — simulates epoch timing for testing
-# ---------------------------------------------------------------------------
-
-
-class MockSomaClient:
-    """Simulates on-chain epoch timing without touching a real network.
-
-    Epochs advance based on wall-clock time from a shared start time
-    persisted to disk, so all callers see consistent epochs.
-    """
-
-    def __init__(self, state_dir: str, epoch_duration_s: float = 30.0):
-        self.epoch_duration_s = epoch_duration_s
-        self.state_file = os.path.join(state_dir, "mock_chain.json")
-        self._load_or_init()
-
-    def _load_or_init(self):
-        if os.path.exists(self.state_file):
-            with open(self.state_file) as f:
-                self.chain = json.load(f)
-        else:
-            self.chain = {
-                "start_time": time.time(),
-                "epoch_duration_s": self.epoch_duration_s,
-                "models": {},
-                "next_model_seq": 1,
-            }
-            self._save()
-
-    def _save(self):
-        os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
-        with open(self.state_file, "w") as f:
-            json.dump(self.chain, f, indent=2)
-
-    @property
-    def current_epoch(self) -> int:
-        elapsed = time.time() - self.chain["start_time"]
-        return int(elapsed / self.chain["epoch_duration_s"])
-
-    async def get_latest_system_state(self):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(epoch=self.current_epoch)
-
-    async def get_embedding_dim(self) -> int:
-        return 2048
-
-    async def commit_model(
-        self, *, signer, weights_url, encrypted_weights, decryption_key,
-        embedding, commission_rate, stake_amount=None,
-    ) -> str:
-        epoch = self.current_epoch
-        model_id = f"mock-model-{self.chain['next_model_seq']:04d}"
-        self.chain["models"][model_id] = {
-            "commit_epoch": epoch,
-            "revealed": False,
-            "weights_url": weights_url,
-        }
-        self.chain["next_model_seq"] += 1
-        self._save()
-        print(f"  [MOCK] commit_model -> {model_id} at epoch {epoch}")
-        print(f"  [MOCK] reveal will be valid at epoch >= {epoch + 1}")
-        return model_id
-
-    async def commit_model_update(
-        self, *, signer, model_id, weights_url, encrypted_weights,
-        decryption_key, embedding,
-    ):
-        epoch = self.current_epoch
-        if model_id not in self.chain["models"]:
-            raise RuntimeError(f"[MOCK] Unknown model_id: {model_id}")
-        self.chain["models"][model_id].update({
-            "commit_epoch": epoch,
-            "revealed": False,
-            "weights_url": weights_url,
-        })
-        self._save()
-        print(f"  [MOCK] commit_model_update {model_id} at epoch {epoch}")
-        print(f"  [MOCK] reveal will be valid at epoch >= {epoch + 1}")
-
-    async def reveal_model(self, *, signer, model_id, decryption_key, embedding):
-        epoch = self.current_epoch
-        if model_id not in self.chain["models"]:
-            raise RuntimeError(f"[MOCK] Unknown model_id: {model_id}")
-        model = self.chain["models"][model_id]
-        commit_epoch = model["commit_epoch"]
-        if epoch <= commit_epoch:
-            raise RuntimeError(
-                f"[MOCK] Cannot reveal {model_id} in epoch {epoch} — "
-                f"committed in epoch {commit_epoch}, "
-                f"must wait until epoch >= {commit_epoch + 1}"
-            )
-        model["revealed"] = True
-        self._save()
-        print(f"  [MOCK] reveal_model {model_id} at epoch {epoch} ✓")
-        print(f"  [MOCK] model is now active for scoring!")
-
-    async def reveal_model_update(self, *, signer, model_id, decryption_key, embedding):
-        await self.reveal_model(
-            signer=signer, model_id=model_id,
-            decryption_key=decryption_key, embedding=embedding,
-        )

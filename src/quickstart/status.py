@@ -78,46 +78,29 @@ async def show_status(model_id: str | None):
 
     # -- Network stats --
     target_st = state.target_state
-    emission = state.emission_pool
+    validators = state.validators.validators
     print(f"\n--- Network ---")
     print(f"Reward/target:    {SomaClient.to_soma(target_st.reward_per_target):.4f} SOMA")
     print(f"Targets this epoch: {target_st.targets_generated_this_epoch}")
     print(f"Hits this epoch:  {target_st.hits_this_epoch}")
-    print(f"Validators:       {len(state.validators.validators)}")
+    print(f"Validators:       {len(validators)}")
 
     # -- Model status --
     if model_id:
         print(f"\n--- Model: {model_id} ---")
 
-        registry = state.model_registry
-
-        # Check pending
-        pending = vars(registry.pending_models) if hasattr(registry, 'pending_models') else {}
-        if model_id in pending:
-            m = pending[model_id]
-            print(f"Status:           PENDING (committed, awaiting reveal)")
+        active_models = await client.get_active_models()
+        active_match = [m for m in active_models if m.model_id == model_id]
+        if active_match:
+            m = active_match[0]
             print(f"Owner:            {m.owner}")
-            print(f"Commit epoch:     {getattr(m, 'commit_epoch', '?')}")
-
-        # Check active
-        active = vars(registry.active_models) if hasattr(registry, 'active_models') else {}
-        if model_id in active:
-            m = active[model_id]
-            print(f"Status:           ACTIVE ✓")
-            print(f"Owner:            {m.owner}")
-            if hasattr(m, 'staking_pool'):
-                pool_soma = SomaClient.to_soma(m.staking_pool.soma_balance)
-                print(f"Staked:           {pool_soma:.2f} SOMA")
-            if hasattr(m, 'commission_rate'):
-                print(f"Commission:       {m.commission_rate / 100:.1f}%")
-
-        # Check inactive
-        inactive = vars(registry.inactive_models) if hasattr(registry, 'inactive_models') else {}
-        if model_id in inactive:
-            print(f"Status:           INACTIVE")
-
-        if model_id not in pending and model_id not in active and model_id not in inactive:
-            print(f"Status:           NOT FOUND in model registry")
+            print(f"Commission:       {m.commission_rate / 100:.1f}%")
+            print(f"Status:           ACTIVE")
+            print(f"Stake:            {m.stake:.2f} SOMA")
+            if m.has_pending_update:
+                print(f"Pending update:   yes")
+        else:
+            print(f"Status:           NOT ACTIVE")
 
         # -- Targets with this model --
         print(f"\n--- Targets ---")
@@ -144,23 +127,9 @@ async def show_status(model_id: str | None):
             print(f"  {t.id}  reward={reward:.4f} SOMA  winner={winner[:20]}...")
         if len(claimable) > 5:
             print(f"  ... and {len(claimable) - 5} more")
-        print(f"\nRun `uv run settle-targets` to claim.")
+        print(f"\nRun `uv run claim` to claim.")
     else:
         print("No claimable targets.")
-
-    # -- Stakes --
-    print(f"\n--- Your Stakes ---")
-    staked_objects = await client.list_owned_objects(
-        sender, object_type="staked_soma"
-    )
-    if staked_objects:
-        print(f"Staked objects: {len(staked_objects)}")
-        for s in staked_objects:
-            print(f"  id={s.id}")
-    else:
-        print("No active stakes.")
-        if model_id:
-            print(f"Run `uv run stake-model --model-id {model_id}` to stake.")
 
     print(f"\n{'='*60}")
 

@@ -7,6 +7,7 @@ Train a model, publish it on-chain, submit data against targets, and earn reward
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - A [Modal](https://modal.com) account
+- Latest soma binary [installed](https://docs.soma.org/getting-started/install/)
 
 ## Setup
 
@@ -17,12 +18,12 @@ uv run modal setup
 
 ### Secrets
 
-Copy `.env.example` to `.env` and fill in the values:
+Copy `.env.example` to `.env` and fill in:
 
-- **`SOMA_SECRET_KEY`** — Base58-encoded Ed25519 secret key.
+- **`SOMA_SECRET_KEY`** — Base58-encoded Ed25519 secret key. Get yours by running `soma wallet export`.
 - **`HF_TOKEN`** — HuggingFace access token. Create one at <https://huggingface.co/settings/tokens>, then approve access to the [gated dataset](https://huggingface.co/datasets/bigcode/the-stack-v2-dedup).
 
-#### Upload bucket (Cloudflare R2 recommended)
+### Upload Bucket (Cloudflare R2)
 
 You need an S3-compatible bucket for uploading model weights and submission data. **Cloudflare R2** is the simplest option (no IAM, free egress):
 
@@ -30,114 +31,78 @@ You need an S3-compatible bucket for uploading model weights and submission data
     - Activate R2 Subscription on your account ($0/mo with 10 GB/month free)
 2. Create a bucket (e.g. `soma-data`).
 3. Enable public access: select your bucket → **Settings** → **Public Development URL** → enable the `r2.dev` subdomain. Copy the public URL (your S3_PUBLIC_URL).
-4. Go back to R2 object storage Overiview. Under Account Details, copy the S3 API (your S3_ENDPOINT_URL). Then next to API Tokens, click **Manage**. Create a token with **Object Read & Write** permissions for your bucket. Copy the Access Key ID (your S3_ACCESS_KEY_ID) and Secret Access Key (your S3_SECRET_ACCESS_KEY).
+4. Go back to R2 object storage Overview. Under Account Details, copy the S3 API (your S3_ENDPOINT_URL). Then next to API Tokens, click **Manage**. Create a token with **Object Read & Write** permissions for your bucket. Copy the Access Key ID (your S3_ACCESS_KEY_ID) and Secret Access Key (your S3_SECRET_ACCESS_KEY).
 5. Fill in your `.env`:
    - **`S3_BUCKET`** — your bucket name
    - **`S3_ACCESS_KEY_ID`** / **`S3_SECRET_ACCESS_KEY`** — from the API token
    - **`S3_ENDPOINT_URL`** — `https://<account-id>.r2.cloudflarestorage.com`
    - **`S3_PUBLIC_URL`** — your bucket's public URL (e.g. `https://pub-xxx.r2.dev`)
 
-AWS S3 and GCS (via HMAC keys) are also supported — set `S3_ENDPOINT_URL` accordingly or leave it blank for AWS.
+AWS S3 and GCS are also supported if preferred.
 
-Then push them to Modal:
+### Push secrets to Modal
 
 ```bash
 uv run create-secrets
 ```
 
-## Training a Model
+---
 
-Each epoch (24h) you train your model, publish it on-chain, and then submit data against targets to earn rewards:
+## 1. Submit Data
 
-```
-Train → Commit → (epoch boundary) → Reveal → Submit Data → Claim Rewards
-```
-
-### 1. Train
-
-Train a Soma V1 model on [The Stack v2](https://huggingface.co/datasets/bigcode/the-stack-v2-dedup) using an H100 GPU. Two backends are available:
+The submitter streams data from [The Stack v2](https://huggingface.co/datasets/bigcode/the-stack-v2-dedup), scores it against open targets, and submits on-chain when the distance threshold is met. Run it interactively to see how it works:
 
 ```bash
-# PyTorch
-uv run modal run --detach src/quickstart/train_torch.py --num-steps 500
-
-# Flax/JAX
-uv run modal run --detach src/quickstart/train_flax.py --num-steps 500
+uv run modal run src/quickstart/submitter.py
 ```
 
-Both scripts stream data from The Stack v2, checkpoint every 500 steps to a Modal volume (`soma-training-data`), and save training artifacts (weights + embedding) alongside each checkpoint so they can be committed without a GPU.
+## 2. Localnet Training (Dev/Test)
 
-### 2. Commit your model on-chain
-
-Commit encrypts your latest checkpoint, uploads it to S3, and registers it on-chain. No GPU needed — runs on CPU:
+Run a full **train → commit → reveal** cycle using an embedded Soma localnet inside Modal. No testnet access needed — one command, instant feedback:
 
 ```bash
-uv run modal run src/quickstart/training.py::commit_entrypoint --no-mock
+# PyTorch (default):
+uv run modal run src/quickstart/training.py::localnet
+
+# Flax/JAX:
+uv run modal run src/quickstart/training.py::localnet --framework flax
+
+# More training steps:
+uv run modal run src/quickstart/training.py::localnet --steps-per-round 20
 ```
 
-This writes a local `training_state.json` with your `model_id` for use by other CLI tools.
+This trains a small model, commits it on-chain, advances the epoch, and reveals it — the entire lifecycle in a single run. Use it to verify your setup and understand the flow before going to testnet.
 
-### 3. Reveal after the epoch advances
+## 3. Production (Testnet)
 
-Models must be revealed one epoch after they are committed. Deploy the reveal cron to handle this automatically (checks every 6 hours):
+Graduate to testnet. The goal is to deploy two automations that run continuously: one trains your model each epoch, the other submits data to earn rewards.
+
+**Kick off the first training round** — this trains on an H100, commits on-chain, and writes your `model_id` locally:
+
+```bash
+uv run modal run src/quickstart/training.py --steps-per-round 500
+
+# Or use Flax/JAX instead of PyTorch:
+uv run modal run src/quickstart/training.py --steps-per-round 500 --framework flax
+```
+
+**Deploy** — a cron reveals your model when the epoch advances (every 24h), spawns the next training round, and the submitter scores data against open targets:
 
 ```bash
 uv run modal deploy src/quickstart/training.py
-```
-
-Or trigger a reveal manually:
-
-```bash
-uv run modal run src/quickstart/training.py::reveal_entrypoint --no-mock
-```
-
-### 4. Stake to your model
-
-Models need stake to be competitive. Stake SOMA to your model after it's revealed:
-
-```bash
-uv run stake-model --model-id 0x...
-```
-
-### 5. Submit data
-
-Once your model is active (revealed + staked), the submitter streams data from The Stack v2, finds entries that beat the distance threshold on open targets, uploads them to S3, and submits on-chain:
-
-```bash
-# Run interactively:
-uv run modal run src/quickstart/submitter.py
-
-# Deploy as a persistent service:
 uv run modal deploy src/quickstart/submitter.py
 ```
 
-### 6. Claim rewards
+After this, everything runs without intervention. Each epoch your model is trained, committed, revealed, and the submitter earns against open targets.
+
+Fork `training.py` and `submitter.py` to build your own strategies.
+
+## 4. Claim Rewards
 
 After targets settle, claim your rewards:
 
 ```bash
-uv run settle-targets
-```
-
-## Automated Training Loop
-
-Instead of running each step manually, you can automate the full training cycle. Train + commit in one shot, and the deployed cron reveals then spawns the next training round:
-
-```bash
-# Kick off the first round (train + commit):
-uv run modal run src/quickstart/training.py::main --no-mock --steps-per-round 500
-
-# Deploy the reveal cron (reveals when epoch advances, spawns next training round):
-uv run modal deploy src/quickstart/training.py
-```
-
-### Testing with mock chain
-
-All training commands default to `--mock` which simulates epoch timing without real on-chain transactions. Use this to verify your setup before going live:
-
-```bash
-# Mock mode (default) — 30s epochs, no real chain calls:
-uv run modal run src/quickstart/training.py::main --steps-per-round 10 --epoch-duration 30
+uv run claim
 ```
 
 ## Monitoring
@@ -149,32 +114,29 @@ uv run soma-status
 uv run soma-status --model-id 0x...
 ```
 
-## Staking
+## Reference: Standalone Training Scripts
+
+For studying the training loop without the commit/reveal machinery:
+
+- `src/quickstart/train_torch.py` — PyTorch
+- `src/quickstart/train_flax.py` — Flax/JAX
 
 ```bash
-# Stake to a model:
-uv run stake-model --model-id 0x... --amount 10.0
-
-# List your stakes:
-uv run stake-model --list
-
-# Withdraw a stake:
-uv run stake-model --withdraw 0x...
+uv run modal run --detach src/quickstart/train_torch.py --num-steps 500
+uv run modal run --detach src/quickstart/train_flax.py --num-steps 500
 ```
-
-All local CLI commands require `SOMA_SECRET_KEY` in your `.env` file.
 
 ## Project Structure
 
 ```
 src/quickstart/
-├── common.py              # Shared utilities — training state, S3, mock client, checkpoints
-├── training.py            # Modal app — commit, reveal (cron), train+commit loop
-├── submitter.py           # Modal app — data submission (score + upload + submit on-chain)
-├── train_torch.py         # Modal app — PyTorch training on The Stack v2
-├── train_flax.py          # Modal app — Flax/JAX training on The Stack v2
-├── stake.py               # CLI — stake SOMA to models
-├── status.py              # CLI — model, target, and network status dashboard
-├── create_modal_secret.py # CLI — push .env secrets to Modal
-└── settle_targets.py      # CLI — claim rewards from settled targets
+├── common.py              # Shared utilities — training state, S3, checkpoints
+├── training.py            # Modal app — train, commit, reveal (torch/flax)
+├── submitter.py           # Modal app — data submission (score + upload + submit)
+├── train_torch.py         # Standalone PyTorch training reference
+├── train_flax.py          # Standalone Flax/JAX training reference
+├── status.py              # CLI — model and network status dashboard
+├── settle_targets.py      # CLI — claim rewards from settled targets
+├── localnet.py            # Localnet helpers for dev/test
+└── create_modal_secret.py # CLI — push .env secrets to Modal
 ```

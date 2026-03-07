@@ -1,7 +1,7 @@
-"""Settle all claimable targets on the SOMA network.
+"""Claim rewards from settled targets on the SOMA network.
 
 Usage:
-    uv run python src/quickstart/settle_targets.py
+    uv run claim
 """
 
 import asyncio
