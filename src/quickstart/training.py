@@ -31,7 +31,6 @@ gpu_image = (
     modal.Image.debian_slim(python_version="3.13")
     .pip_install(
         "soma-models[torch,flax]>=0.1.7",
-        "soma-sdk>=0.1.7",
         "datasets>=3.0",
         "torch>=2.0",
         "optax>=0.2",
@@ -39,6 +38,7 @@ gpu_image = (
         "boto3",
         "smart_open",
     )
+    .run_commands("pip install --force-reinstall --no-cache-dir soma-sdk")
     .env({"PYTHONPATH": "/root/src"})
     .add_local_dir("src", remote_path="/root/src")
 )
@@ -46,9 +46,9 @@ gpu_image = (
 cpu_image = (
     modal.Image.debian_slim(python_version="3.13")
     .pip_install(
-        "soma-sdk>=0.1.7",
         "boto3",
     )
+    .run_commands("pip install --force-reinstall --no-cache-dir soma-sdk")
     .env({"PYTHONPATH": "/root/src"})
     .add_local_dir("src", remote_path="/root/src")
 )
@@ -70,7 +70,6 @@ localnet_image = (
     )
     .pip_install(
         "soma-models[torch,flax]>=0.1.7",
-        "soma-sdk>=0.1.7",
         "datasets>=3.0",
         "torch>=2.0",
         "optax>=0.2",
@@ -78,6 +77,7 @@ localnet_image = (
         "boto3",
         "smart_open",
     )
+    .run_commands("pip install --force-reinstall --no-cache-dir soma-sdk")
     .add_local_dir("src", remote_path="/root/src")
 )
 

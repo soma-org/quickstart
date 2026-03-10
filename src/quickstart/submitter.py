@@ -36,7 +36,8 @@ image = (
         "curl -sSfL https://sup.soma.org | sh",
         "sup install soma",
     )
-    .pip_install("soma-sdk>=0.1.7", "datasets>=3.0", "boto3>=1.35", "smart_open")
+    .pip_install("datasets>=3.0", "boto3>=1.35", "smart_open")
+    .run_commands("pip install --force-reinstall --no-cache-dir soma-sdk")
 )
 
 SCORING_PORT = 9124
