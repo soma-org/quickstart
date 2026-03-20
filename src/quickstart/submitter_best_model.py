@@ -132,20 +132,30 @@ def upload_to_s3(data: bytes, checksum: str, epoch: int) -> str:
     return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
 
 
-def load_model(manifest, device):
+def load_model(manifest, device, retries=3):
     """Download, decrypt, and load a single model for local inference."""
     import requests
     from soma_sdk import SomaClient
     from soma_models.v1.torch import Model, ModelConfig
 
     print(f"Downloading model from {manifest.url[:60]}...")
-    resp = requests.get(manifest.url, timeout=300)
-    resp.raise_for_status()
-    decrypted = SomaClient.decrypt_weights(resp.content, manifest.decryption_key)
+    for attempt in range(1, retries + 1):
+        try:
+            resp = requests.get(manifest.url, timeout=(30, 600), stream=True)
+            resp.raise_for_status()
+            data = resp.content
+            break
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            print(f"  Download attempt {attempt}/{retries} failed: {e}")
+            if attempt == retries:
+                raise
+            import time
+            time.sleep(5 * attempt)
+    decrypted = SomaClient.decrypt_weights(data, manifest.decryption_key)
     model = Model.load_bytes(decrypted, ModelConfig(dropout_rate=0.0))
     model.eval()
     model.to(device)
-    print(f"  Model loaded ({len(resp.content)} bytes)")
+    print(f"  Model loaded ({len(data)} bytes)")
     return model
 
 
