@@ -163,7 +163,6 @@ def batch_embed(model, data_list, device):
     """Run batched inference on multiple data samples at once. Returns list of embeddings."""
     import torch
     from soma_models.v1.tokenizer import tokenize
-    from soma_models.v1.configs import V1_MAX_SEQ_LEN
 
     embeddings = []
     # Tokenize all samples — each produces 1+ sequences, we need the mean
@@ -180,7 +179,7 @@ def batch_embed(model, data_list, device):
         seq_counts.append(len(seqs))
         for seq in seqs:
             batch_token_ids.append(seq.token_ids)
-            batch_positions.append(list(range(V1_MAX_SEQ_LEN)))
+            batch_positions.append(seq.pos_ids)
             sample_indices.append(i)
 
     if not batch_token_ids:
