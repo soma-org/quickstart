@@ -28,7 +28,7 @@ async def run():
     balance = await client.get_balance(sender)
     print(f"Balance: {balance:.2f} SOMA")
 
-    targets = await client.get_targets(status="claimable")
+    targets = await client.get_targets(status="claimable", submitter=sender)
     print(f"Found {len(targets)} claimable target(s)")
 
     if not targets:

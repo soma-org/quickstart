@@ -227,7 +227,11 @@ class Submitter:
             print("Distance exceeds threshold — no hit, skipping submission.")
             return
 
-        # Score passed — upload to S3 then submit on-chain
+        # Score passed — merge coins to avoid InsufficientBond, then submit
+        try:
+            await client.merge_coins(signer=kp)
+        except Exception:
+            pass  # OK if only 1 coin
         data_url = upload_to_s3(data_bytes, checksum, target.generation_epoch)
         print(f"\n=== Submitting data (url: {data_url}) ===")
         await client.submit_data(
