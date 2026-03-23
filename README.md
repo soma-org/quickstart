@@ -86,11 +86,11 @@ uv run modal run src/quickstart/training.py --steps-per-round 500
 uv run modal run src/quickstart/training.py --steps-per-round 500 --framework flax
 ```
 
-**Deploy** — a cron reveals your model when the epoch advances (every 24h), spawns the next training round, and the submitter scores data against open targets:
+**Deploy and start** — deploy the training cron and the submitter. The submitter starts immediately and re-runs on a 24h schedule:
 
 ```bash
-uv run modal deploy src/quickstart/training.py
-uv run modal deploy src/quickstart/submitter.py
+uv run modal deploy src/quickstart/training.py && uv run modal run --detach src/quickstart/training.py
+uv run modal deploy src/quickstart/submitter.py && uv run submit
 ```
 
 After this, everything runs without intervention. Each epoch your model is trained, committed, revealed, and the submitter earns against open targets.

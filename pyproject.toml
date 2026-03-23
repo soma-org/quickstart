@@ -32,4 +32,5 @@ dev = [
 
 [project.scripts]
 claim = "quickstart.settle_targets:main"
+submit = "quickstart.submitter:trigger"
 create-secrets = "quickstart.create_modal_secret:main"
