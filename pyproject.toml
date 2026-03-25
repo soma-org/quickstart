@@ -4,10 +4,11 @@ version = "0.1.0"
 description = "Soma scoring quickstart — run GPU scoring on Modal"
 readme = "README.md"
 requires-python = ">=3.13"
+# ML packages (soma-models, torch, jax, etc.) are installed inside Modal
+# containers via modal.Image.pip_install(), not locally.
 dependencies = [
     "aiohttp>=3.11",
     "modal>=1.3.4",
-    "soma-models>=0.1.7",
     "soma-sdk>=0.1.7",
     "python-dotenv>=1.1",
     "boto3>=1.35",
@@ -22,12 +23,8 @@ module-root = "src"
 
 [dependency-groups]
 dev = [
-    "datasets>=4.6.1",
-    "jax[cpu]>=0.9.1",
-    "optax>=0.2.7",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
-    "soma-models[all,flax]>=0.1.7",
 ]
 
 [project.scripts]
